@@ -1,0 +1,26 @@
+hash: 9364837c06ddcc8ca654e26ab46735a55b5b791c3e4a599cdb072644411f7049
+updated: 2017-06-15T09:42:17.032377137-06:00
+imports:
+- name: github.com/mitchellh/mapstructure
+  version: d0303fe809921458f417bcf828397a65db30a7e4
+- name: github.com/monasca/golang-monascaclient
+  version: 710fa27d90597a9a72ca1d05868eff8ab766eead
+  subpackages:
+  - monascaclient
+  - monascaclient/models
+- name: github.com/racker/perigee
+  version: 44a7879d89b7040bcdb51164a83292ef5bf9deec
+- name: github.com/rackspace/gophercloud
+  version: da56de6a59e53fdd61be1b5d9b87df34c47ac420
+  subpackages:
+  - openstack
+  - openstack/identity/v2/tenants
+  - openstack/identity/v2/tokens
+  - openstack/identity/v3/endpoints
+  - openstack/identity/v3/services
+  - openstack/identity/v3/tokens
+  - openstack/utils
+  - pagination
+  - testhelper
+  - testhelper/client
+testImports: []

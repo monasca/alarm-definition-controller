@@ -1,0 +1,10 @@
+package: github.com/monasca/alarm-definition-controller
+import:
+- package: github.com/monasca/golang-monascaclient
+  subpackages:
+  - monascaclient
+  - monascaclient/models
+- package: github.com/rackspace/gophercloud
+  version: ^1.0.0
+  subpackages:
+  - openstack
