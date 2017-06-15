@@ -44,7 +44,7 @@ import (
 // TODO: check into publishing events instead of patching the original resource
 const (
 	// A path to the endpoint for the AlarmDefinition custom resources.
-	alarmDefinitionsEndpoint = "https://%s:%s/apis/monasca.example.com/v1/namespaces/%s/alarmdefinitions"
+	alarmDefinitionsEndpoint = "https://%s:%s/apis/monasca.io/v1/namespaces/%s/alarmdefinitions"
 )
 
 const alarmDefinitionControllerSuffix = " - adc"
