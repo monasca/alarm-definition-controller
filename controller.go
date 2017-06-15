@@ -41,26 +41,13 @@ import (
 )
 
 // TODO: support for multiple namespaces
-// TODO: add 'link' field to alarm definitions to mark which ones controller should handle?
 // TODO: check into publishing events instead of patching the original resource
 const (
 	// A path to the endpoint for the AlarmDefinition custom resources.
 	alarmDefinitionsEndpoint = "https://%s:%s/apis/monasca.example.com/v1/namespaces/%s/alarmdefinitions"
 )
 
-func getEnvDefault(name, def string) string {
-	val := os.Getenv(name)
-	if val == "" {
-		val = def
-	}
-	return val
-}
-
 const alarmDefinitionControllerSuffix = " - adc"
-
-// This is an in-memory map of cron servers that is managed by this controller.
-// The map is indexed by the UID of the CronTab object registered in the Kubernetes API.
-var alarmDefinitionCache = map[string]models.AlarmDefinitionElement{}
 
 var (
 	pollInterval = flag.Int("poll-interval", 15, "The polling interval in seconds.")
@@ -70,35 +57,17 @@ var (
 	kubePort = flag.String("port", getEnvDefault("KUBERNETES_SERVICE_PORT_HTTPS", "443"), "The port of the Kubernetes API server")
 	monServer  = flag.String("monasca", "http://monasca-api:8070/v2.0", "The URI of the monasca api")
 	namespace  = flag.String("namespace", getEnvDefault("NAMESPACE", "default"), "The namespace to use.")
+	keystoneServer = flag.String("keystone", getEnvDefault("OS_AUTH_URL", "http://monasca-keystone:35357/v3"), "The url of the keystone server")
+	keystoneUser = flag.String("keystone-user", getEnvDefault("OS_USERNAME", "mini-mon"), "The keystone user")
+	keystonePassword = flag.String("keystone-pass", getEnvDefault("OS_PASSWORD", "mini-mon"), "The keystone password")
+	keystoneDomain = flag.String("keystone-domain", getEnvDefault("OS_DOMAIN_NAME", "default"), "The keystone domain")
+	keystoneProject = flag.String("keystone-project", getEnvDefault("OS_PROJECT_NAME", "mini-mon"), "The keystone project")
+
 	token string
 	httpClient *http.Client
+	//cache to avoid repeated calls to monasca
+	alarmDefinitionCache = map[string]models.AlarmDefinitionElement{}
 )
-
-func init() {
-	token_byte, err := ioutil.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/token")
-	if err != nil {
-		os.Exit(1)
-	}
-	token = string(token_byte)
-
-	certs := x509.NewCertPool()
-
-	pemData, err := ioutil.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/ca.crt")
-	if err != nil {
-		// do error
-	}
-	certs.AppendCertsFromPEM(pemData)
-
-	tlsConf := &tls.Config{
-		RootCAs: certs,
-	}
-
-	transport := &http.Transport{TLSClientConfig: tlsConf}
-
-	httpClient = &http.Client{
-		Transport: transport,
-	}
-}
 
 type kubeResponse struct {
 	Kind       string
@@ -127,6 +96,40 @@ type Resource struct {
 type alarmDefinitionResource struct {
 	models.AlarmDefinitionElement
 	Error               string
+}
+
+func init() {
+	token_byte, err := ioutil.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/token")
+	if err != nil {
+		os.Exit(1)
+	}
+	token = string(token_byte)
+
+	certs := x509.NewCertPool()
+
+	pemData, err := ioutil.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/ca.crt")
+	if err != nil {
+		// do error
+	}
+	certs.AppendCertsFromPEM(pemData)
+
+	tlsConf := &tls.Config{
+		RootCAs: certs,
+	}
+
+	transport := &http.Transport{TLSClientConfig: tlsConf}
+
+	httpClient = &http.Client{
+		Transport: transport,
+	}
+}
+
+func getEnvDefault(name, def string) string {
+	val := os.Getenv(name)
+	if val == "" {
+		val = def
+	}
+	return val
 }
 
 func equal(a1, a2 models.AlarmDefinitionElement) bool {
@@ -178,11 +181,11 @@ func equalStringList(listA []string, listB []string) bool {
 
 func set_keystone_token() error {
 	opts := gophercloud.AuthOptions{
-		IdentityEndpoint: "http://monasca-keystone:35357/v3",
-		Username: "mini-mon",
-		Password: "password",
-		DomainName: "Default",
-		TenantName: "mini-mon",
+		IdentityEndpoint: keystoneServer,
+		Username: keystoneUser,
+		Password: keystonePassword,
+		DomainName: keystoneDomain,
+		TenantName: keystoneProject,
 	}
 
 	openstackProvider, err := openstack.AuthenticatedClient(opts)
@@ -196,133 +199,6 @@ func set_keystone_token() error {
 	headers.Add("X-Auth-Token", token)
 	monascaclient.SetHeaders(headers)
 	return nil
-}
-
-
-func pollDefinitions() {
-	certs := x509.NewCertPool()
-
-	pemData, err := ioutil.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/ca.crt")
-	if err != nil {
-		// do error
-	}
-	certs.AppendCertsFromPEM(pemData)
-
-	tlsConf := &tls.Config{
-		RootCAs: certs,
-	}
-
-	transport := &http.Transport{TLSClientConfig: tlsConf}
-
-	client := &http.Client{
-		Transport: transport,
-	}
-
-	url := fmt.Sprintf(alarmDefinitionsEndpoint, *kubeServer, *kubePort, *namespace)
-
-	monascaclient.SetBaseURL(*monServer)
-	set_keystone_token()
-	updateCache()
-	log.Printf("Found existing alarms %v", alarmDefinitionCache)
-
-	first := true
-
-	// Events and errors are not expected to be generated very often so
-	// only allow the controller to buffer 100 of each.
-	for {
-		// Sleep for the poll interval if not the first time around.
-		// Do this here so we sleep for the poll interval every time,
-		// even after errors occurred.
-		if !first {
-			time.Sleep(time.Duration(*pollInterval) * time.Second)
-		}
-		first = false
-
-		err := set_keystone_token()
-		if err != nil {
-			log.Printf("Failed to retrieve new keystone token: %s", err.Error())
-			continue
-		}
-
-		request, err := http.NewRequest("GET", url, nil)
-		request.Header.Add("Authorization", "Bearer " + token)
-
-		resp, err := client.Do(request)
-		if err != nil {
-			log.Printf("Could not connect to Kubernetes API: %v", err)
-			continue
-		}
-		if resp.StatusCode != http.StatusOK {
-			log.Printf("Unexpected status from kubernetes: %s", resp.Status)
-			continue
-		}
-
-		respBytes, err2 := ioutil.ReadAll(resp.Body)
-		if err2 != nil {
-			log.Print(err2)
-		}
-
-		var decodedResp kubeResponse
-		err = json.Unmarshal(respBytes, &decodedResp)
-		if err != nil {
-			log.Printf("Could not decode JSON event object: %v", err)
-			continue
-		}
-
-		l := decodedResp.Items
-		//log.Printf("Discovered: %v", l)
-		//log.Printf("Cached: %v", alarmDefinitionCache)
-
-		// loop to remove alarms
-		for id, cached := range alarmDefinitionCache {
-			exists := false
-			for _, discovered := range l {
-				// check for equality
-				if cached.ID == discovered.Spec.ID {
-					exists = true
-				}
-			}
-			if !exists {
-				// remove definitions from monasca
-				err := removeAlarmDefinition(id, cached)
-				if err != nil {
-					log.Print(err)
-					continue
-				}
-			}
-		}
-
-		discoveredLoop:
-		for _, item := range l { // loop to add/update alarms
-			discovered := item.Spec.AlarmDefinitionElement
-
-			// if not marked with ID, add new
-			if item.Spec.ID == "" {
-				err := addAlarmDefinition(item)
-				if err != nil {
-					log.Print(err)
-					applyError(item, err)
-				}
-				continue
-			}
-
-			for id, cached := range alarmDefinitionCache {
-				// if exists, check if needs update
-				if discovered.ID == id && !equal(discovered, cached) {
-					log.Printf("Discovered: %v", discovered)
-					log.Printf("Cached: %v", cached)
-					//update if possible
-					err := updateAlarmDefinition(id, item)
-					if err != nil {
-						log.Print(err)
-						applyError(item, err)
-					}
-					continue discoveredLoop
-				}
-			}
-
-		}
-	}
 }
 
 func updateCache() error {
@@ -470,16 +346,132 @@ func patchResource(adr Resource, specPatch interface{}) error {
 	return nil
 }
 
+func pollDefinitions() {
+	certs := x509.NewCertPool()
+
+	pemData, err := ioutil.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/ca.crt")
+	if err != nil {
+		// do error
+	}
+	certs.AppendCertsFromPEM(pemData)
+
+	tlsConf := &tls.Config{
+		RootCAs: certs,
+	}
+
+	transport := &http.Transport{TLSClientConfig: tlsConf}
+
+	client := &http.Client{
+		Transport: transport,
+	}
+
+	url := fmt.Sprintf(alarmDefinitionsEndpoint, *kubeServer, *kubePort, *namespace)
+
+	monascaclient.SetBaseURL(*monServer)
+	set_keystone_token()
+	updateCache()
+	log.Printf("Found existing alarms %v", alarmDefinitionCache)
+
+	first := true
+
+	// Events and errors are not expected to be generated very often so
+	// only allow the controller to buffer 100 of each.
+	for {
+		// Sleep for the poll interval if not the first time around.
+		// Do this here so we sleep for the poll interval every time,
+		// even after errors occurred.
+		if !first {
+			time.Sleep(time.Duration(*pollInterval) * time.Second)
+		}
+		first = false
+
+		err := set_keystone_token()
+		if err != nil {
+			log.Printf("Failed to retrieve new keystone token: %s", err.Error())
+			continue
+		}
+
+		request, err := http.NewRequest("GET", url, nil)
+		request.Header.Add("Authorization", "Bearer " + token)
+
+		resp, err := client.Do(request)
+		if err != nil {
+			log.Printf("Could not connect to Kubernetes API: %v", err)
+			continue
+		}
+		if resp.StatusCode != http.StatusOK {
+			log.Printf("Unexpected status from Kubernetes: %s", resp.Status)
+			continue
+		}
+
+		respBytes, err2 := ioutil.ReadAll(resp.Body)
+		if err2 != nil {
+			log.Print(err2)
+		}
+
+		var decodedResp kubeResponse
+		err = json.Unmarshal(respBytes, &decodedResp)
+		if err != nil {
+			log.Printf("Could not decode JSON event object: %v", err)
+			continue
+		}
+
+		l := decodedResp.Items
+
+		// loop to remove alarms
+		for id, cached := range alarmDefinitionCache {
+			exists := false
+			for _, discovered := range l {
+				// check for equality
+				if cached.ID == discovered.Spec.ID {
+					exists = true
+				}
+			}
+			if !exists {
+				// remove definitions from monasca
+				err := removeAlarmDefinition(id, cached)
+				if err != nil {
+					log.Print(err)
+					continue
+				}
+			}
+		}
+
+		discoveredLoop:
+		for _, item := range l { // loop to add/update alarms
+			discovered := item.Spec.AlarmDefinitionElement
+
+			// if not marked with ID, add new
+			if item.Spec.ID == "" {
+				err := addAlarmDefinition(item)
+				if err != nil {
+					log.Print(err)
+					applyError(item, err)
+				}
+				continue
+			}
+
+			for id, cached := range alarmDefinitionCache {
+				// if exists, check if needs update
+				if discovered.ID == id && !equal(discovered, cached) {
+					//update if possible
+					err := updateAlarmDefinition(id, item)
+					if err != nil {
+						log.Print(err)
+						applyError(item, err)
+					}
+					continue discoveredLoop
+				}
+			}
+
+		}
+	}
+}
+
 func main() {
 	flag.Parse()
-	//
-	//if *version {
-	//	fmt.Println(VERSION)
-	//	os.Exit(0)
-	//}
 
 	log.Print("Watching for definition objects...")
 
-	// Get the channel of results from the watch
 	pollDefinitions()
 }
