@@ -1,0 +1,8 @@
+---
+apiVersion: "monasca.example.com/v1"
+kind: AlarmDefinition
+metadata:
+  name: first-alarm-definition
+alarmDefinitionSpec:
+  name: "Test Def"
+  expression: "new_metric < 10"
