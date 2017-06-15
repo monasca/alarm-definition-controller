@@ -1,32 +1,18 @@
-hash: b1339fd16370f8e7788a571efb912703a7ebcc31c482808a34b8091e8ec5781b
-updated: 2017-06-15T10:07:31.443922788-06:00
+hash: 066f1949c7a28fd54096100ad057e2ee58a5e01829ae36c1dfd7c01b171e6289
+updated: 2017-06-15T13:35:21.886871817-06:00
 imports:
-- name: ""
-  version: c3adf7f4ac1a924c5d32fe81b904d86a90658fc4
-  repo: git@github.com:monasca/golang-monascaclient
+- name: github.com/gophercloud/gophercloud
+  version: ed590d9afe113c6107cd60717b196155e6579e78
   subpackages:
-  - monascaclient
-  - monascaclient/models
-- name: github.com/mitchellh/mapstructure
-  version: d0303fe809921458f417bcf828397a65db30a7e4
+  - openstack
+  - openstack/identity/v2/tenants
+  - openstack/identity/v2/tokens
+  - openstack/identity/v3/tokens
+  - openstack/utils
+  - pagination
 - name: github.com/monasca/golang-monascaclient
   version: c3adf7f4ac1a924c5d32fe81b904d86a90658fc4
   subpackages:
   - monascaclient
   - monascaclient/models
-- name: github.com/racker/perigee
-  version: 44a7879d89b7040bcdb51164a83292ef5bf9deec
-- name: github.com/rackspace/gophercloud
-  version: da56de6a59e53fdd61be1b5d9b87df34c47ac420
-  subpackages:
-  - openstack
-  - openstack/identity/v2/tenants
-  - openstack/identity/v2/tokens
-  - openstack/identity/v3/endpoints
-  - openstack/identity/v3/services
-  - openstack/identity/v3/tokens
-  - openstack/utils
-  - pagination
-  - testhelper
-  - testhelper/client
 testImports: []
