@@ -294,7 +294,6 @@ func pollDefinitions() {
 
 		discoveredLoop:
 		for _, item := range l { // loop to add/update alarms
-			item.Spec.Name = item.Spec.Name + alarmDefinitionControllerSuffix
 			discovered := item.Spec.AlarmDefinitionElement
 
 			// if not marked with ID, add new
