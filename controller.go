@@ -21,23 +21,23 @@
 package main
 
 import (
+	"bytes"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"github.com/monasca/golang-monascaclient/monascaclient"
 	"github.com/monasca/golang-monascaclient/monascaclient/models"
+	"github.com/rackspace/gophercloud"
 	"github.com/rackspace/gophercloud/openstack"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
-	"time"
-	"io/ioutil"
-	"crypto/x509"
-	"crypto/tls"
-	"bytes"
-	"github.com/rackspace/gophercloud"
-	"errors"
 	"strings"
+	"time"
 )
 
 // TODO: support for multiple namespaces
@@ -53,17 +53,17 @@ var (
 	pollInterval = flag.Int("poll-interval", 15, "The polling interval in seconds.")
 	// The controller connects to the Kubernetes API via localhost. This is either
 	// a locally running kubectl proxy or kubectl proxy running in a sidecar container.
-	kubeServer = flag.String("server", getEnvDefault("KUBERNETES_SERVICE_HOST", "127.0.0.1"), "The address of the Kubernetes API server.")
-	kubePort = flag.String("port", getEnvDefault("KUBERNETES_SERVICE_PORT_HTTPS", "443"), "The port of the Kubernetes API server")
-	monServer  = flag.String("monasca", "http://monasca-api:8070/v2.0", "The URI of the monasca api")
-	namespace  = flag.String("namespace", getEnvDefault("NAMESPACE", "default"), "The namespace to use.")
-	keystoneServer = flag.String("keystone", getEnvDefault("OS_AUTH_URL", "http://monasca-keystone:35357/v3"), "The url of the keystone server")
-	keystoneUser = flag.String("keystone-user", getEnvDefault("OS_USERNAME", "mini-mon"), "The keystone user")
+	kubeServer       = flag.String("server", getEnvDefault("KUBERNETES_SERVICE_HOST", "127.0.0.1"), "The address of the Kubernetes API server.")
+	kubePort         = flag.String("port", getEnvDefault("KUBERNETES_SERVICE_PORT_HTTPS", "443"), "The port of the Kubernetes API server")
+	monServer        = flag.String("monasca", "http://monasca-api:8070/v2.0", "The URI of the monasca api")
+	namespace        = flag.String("namespace", getEnvDefault("NAMESPACE", "default"), "The namespace to use.")
+	keystoneServer   = flag.String("keystone", getEnvDefault("OS_AUTH_URL", "http://monasca-keystone:35357/v3"), "The url of the keystone server")
+	keystoneUser     = flag.String("keystone-user", getEnvDefault("OS_USERNAME", "mini-mon"), "The keystone user")
 	keystonePassword = flag.String("keystone-pass", getEnvDefault("OS_PASSWORD", "mini-mon"), "The keystone password")
-	keystoneDomain = flag.String("keystone-domain", getEnvDefault("OS_DOMAIN_NAME", "default"), "The keystone domain")
-	keystoneProject = flag.String("keystone-project", getEnvDefault("OS_PROJECT_NAME", "mini-mon"), "The keystone project")
+	keystoneDomain   = flag.String("keystone-domain", getEnvDefault("OS_DOMAIN_NAME", "default"), "The keystone domain")
+	keystoneProject  = flag.String("keystone-project", getEnvDefault("OS_PROJECT_NAME", "mini-mon"), "The keystone project")
 
-	token string
+	token      string
 	httpClient *http.Client
 	//cache to avoid repeated calls to monasca
 	alarmDefinitionCache = map[string]models.AlarmDefinitionElement{}
@@ -95,7 +95,7 @@ type Resource struct {
 
 type alarmDefinitionResource struct {
 	models.AlarmDefinitionElement
-	Error               string
+	Error string
 }
 
 func init() {
@@ -167,7 +167,7 @@ func equalStringList(listA []string, listB []string) bool {
 	if len(listA) != len(listB) {
 		return false
 	}
-	outer:
+outer:
 	for _, itemA := range listA {
 		for _, itemB := range listB {
 			if itemA == itemB {
@@ -182,10 +182,10 @@ func equalStringList(listA []string, listB []string) bool {
 func set_keystone_token() error {
 	opts := gophercloud.AuthOptions{
 		IdentityEndpoint: keystoneServer,
-		Username: keystoneUser,
-		Password: keystonePassword,
-		DomainName: keystoneDomain,
-		TenantName: keystoneProject,
+		Username:         keystoneUser,
+		Password:         keystonePassword,
+		DomainName:       keystoneDomain,
+		TenantName:       keystoneProject,
 	}
 
 	openstackProvider, err := openstack.AuthenticatedClient(opts)
@@ -219,10 +219,10 @@ func updateCache() error {
 
 func convertToADRequest(definition models.AlarmDefinitionElement) *models.AlarmDefinitionRequestBody {
 
-	request :=  &models.AlarmDefinitionRequestBody{
-		Name: &definition.Name,
+	request := &models.AlarmDefinitionRequestBody{
+		Name:        &definition.Name,
 		Description: &definition.Description,
-		Expression: &definition.Expression,
+		Expression:  &definition.Expression,
 	}
 	if len(definition.MatchBy) > 0 {
 		request.MatchBy = &definition.MatchBy
@@ -288,7 +288,6 @@ func applyDefinition(adr Resource, definition models.AlarmDefinitionElement) err
 	specPatch := map[string]models.AlarmDefinitionElement{}
 	specPatch["alarmDefinitionSpec"] = definition
 
-
 	err := patchResource(adr, specPatch)
 	if err != nil {
 		log.Print(err)
@@ -329,7 +328,7 @@ func patchResource(adr Resource, specPatch interface{}) error {
 	if err != nil {
 		return err
 	}
-	request.Header.Add("Authorization", "Bearer " + token)
+	request.Header.Add("Authorization", "Bearer "+token)
 	request.Header.Add("Content-Type", "application/merge-patch+json")
 
 	resp, err := httpClient.Do(request)
@@ -392,7 +391,7 @@ func pollDefinitions() {
 		}
 
 		request, err := http.NewRequest("GET", url, nil)
-		request.Header.Add("Authorization", "Bearer " + token)
+		request.Header.Add("Authorization", "Bearer "+token)
 
 		resp, err := client.Do(request)
 		if err != nil {
@@ -437,7 +436,7 @@ func pollDefinitions() {
 			}
 		}
 
-		discoveredLoop:
+	discoveredLoop:
 		for _, item := range l { // loop to add/update alarms
 			discovered := item.Spec.AlarmDefinitionElement
 

@@ -1,5 +1,5 @@
 ---
-apiVersion: "monasca.example.com/v1"
+apiVersion: "monasca.io/v1"
 kind: AlarmDefinition
 metadata:
   name: first-alarm-definition

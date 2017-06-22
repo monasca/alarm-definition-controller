@@ -2,7 +2,7 @@
 apiVersion: extensions/v1beta1
 kind: ThirdPartyResource
 metadata:
-  name: alarm-definition.monasca.example.com
+  name: alarm-definition.monasca.io
 description: "A specification to create a Monasca alarm definition"
 versions:
 - name: v1
