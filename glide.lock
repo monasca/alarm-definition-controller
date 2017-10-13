@@ -1,9 +1,9 @@
-hash: b1339fd16370f8e7788a571efb912703a7ebcc31c482808a34b8091e8ec5781b
-updated: 2017-06-15T10:07:31.443922788-06:00
+hash: d6d7035ff5757536f33e166ce4eb1d0b148ad33de0c2ddfb63b983bab8e14a99
+updated: 2017-10-13T14:03:09.537728347-06:00
 imports:
 - name: ""
   version: c3adf7f4ac1a924c5d32fe81b904d86a90658fc4
-  repo: git@github.com:monasca/golang-monascaclient
+  repo: https://github.com/monasca/golang-monascaclient
   subpackages:
   - monascaclient
   - monascaclient/models
