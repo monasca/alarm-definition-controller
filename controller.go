@@ -28,16 +28,17 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/monasca/golang-monascaclient/monascaclient"
-	"github.com/monasca/golang-monascaclient/monascaclient/models"
-	"github.com/rackspace/gophercloud"
-	"github.com/rackspace/gophercloud/openstack"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/monasca/golang-monascaclient/monascaclient"
+	"github.com/monasca/golang-monascaclient/monascaclient/models"
+	"github.com/rackspace/gophercloud"
+	"github.com/rackspace/gophercloud/openstack"
 )
 
 // TODO: support for multiple namespaces
@@ -181,11 +182,11 @@ outer:
 
 func set_keystone_token() error {
 	opts := gophercloud.AuthOptions{
-		IdentityEndpoint: keystoneServer,
-		Username:         keystoneUser,
-		Password:         keystonePassword,
-		DomainName:       keystoneDomain,
-		TenantName:       keystoneProject,
+		IdentityEndpoint: *keystoneServer,
+		Username:         *keystoneUser,
+		Password:         *keystonePassword,
+		DomainName:       *keystoneDomain,
+		TenantName:       *keystoneProject,
 	}
 
 	openstackProvider, err := openstack.AuthenticatedClient(opts)
