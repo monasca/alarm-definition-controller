@@ -1,6 +1,6 @@
 package: github.com/monasca/alarm-definition-controller
 import:
-- repo: git@github.com:monasca/golang-monascaclient
+- repo: https://github.com/monasca/golang-monascaclient
   subpackages:
   - monascaclient
   - monascaclient/models
