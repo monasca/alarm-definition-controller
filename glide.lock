@@ -1,5 +1,5 @@
-hash: d6d7035ff5757536f33e166ce4eb1d0b148ad33de0c2ddfb63b983bab8e14a99
-updated: 2017-10-13T14:03:09.537728347-06:00
+hash: 576760ebb9c1b2be70655ca6594a320e3047c39fc4c6ed81791061e86d35488a
+updated: 2017-10-18T14:37:30.579699953-06:00
 imports:
 - name: ""
   version: c3adf7f4ac1a924c5d32fe81b904d86a90658fc4
@@ -7,6 +7,10 @@ imports:
   subpackages:
   - monascaclient
   - monascaclient/models
+- name: github.com/gophercloud/gophercloud
+  version: 443743e88335413103dcf1997e46d401b264fbcd
+  subpackages:
+  - openstack
 - name: github.com/mitchellh/mapstructure
   version: d0303fe809921458f417bcf828397a65db30a7e4
 - name: github.com/monasca/golang-monascaclient
