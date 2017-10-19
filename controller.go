@@ -37,8 +37,7 @@ import (
 
 	"github.com/monasca/golang-monascaclient/monascaclient"
 	"github.com/monasca/golang-monascaclient/monascaclient/models"
-	"github.com/rackspace/gophercloud"
-	"github.com/rackspace/gophercloud/openstack"
+	"github.com/gophercloud/gophercloud/openstack"
 )
 
 // TODO: support for multiple namespaces
@@ -58,11 +57,6 @@ var (
 	kubePort         = flag.String("port", getEnvDefault("KUBERNETES_SERVICE_PORT_HTTPS", "443"), "The port of the Kubernetes API server")
 	monServer        = flag.String("monasca", "http://monasca-api:8070/v2.0", "The URI of the monasca api")
 	namespace        = flag.String("namespace", getEnvDefault("NAMESPACE", "default"), "The namespace to use.")
-	keystoneServer   = flag.String("keystone", getEnvDefault("OS_AUTH_URL", "http://monasca-keystone:35357/v3"), "The url of the keystone server")
-	keystoneUser     = flag.String("keystone-user", getEnvDefault("OS_USERNAME", "mini-mon"), "The keystone user")
-	keystonePassword = flag.String("keystone-pass", getEnvDefault("OS_PASSWORD", "mini-mon"), "The keystone password")
-	keystoneDomain   = flag.String("keystone-domain", getEnvDefault("OS_DOMAIN_NAME", "default"), "The keystone domain")
-	keystoneProject  = flag.String("keystone-project", getEnvDefault("OS_PROJECT_NAME", "mini-mon"), "The keystone project")
 
 	token      string
 	httpClient *http.Client
@@ -181,13 +175,11 @@ outer:
 }
 
 func set_keystone_token() error {
-	opts := gophercloud.AuthOptions{
-		IdentityEndpoint: *keystoneServer,
-		Username:         *keystoneUser,
-		Password:         *keystonePassword,
-		DomainName:       *keystoneDomain,
-		TenantName:       *keystoneProject,
-	}
+	opts, err := openstack.AuthOptionsFromEnv()
+  if err != nil {
+  	log.Print(err)
+  	return err
+  }
 
 	openstackProvider, err := openstack.AuthenticatedClient(opts)
 	if err != nil {

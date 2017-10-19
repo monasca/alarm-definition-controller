@@ -4,7 +4,6 @@ import:
   subpackages:
   - monascaclient
   - monascaclient/models
-- package: github.com/rackspace/gophercloud
-  version: ^1.0.0
+- package: github.com/gophercloud/gophercloud
   subpackages:
   - openstack
