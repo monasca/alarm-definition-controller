@@ -38,6 +38,7 @@ import (
 	"github.com/monasca/golang-monascaclient/monascaclient"
 	"github.com/monasca/golang-monascaclient/monascaclient/models"
 	"github.com/gophercloud/gophercloud/openstack"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // TODO: support for multiple namespaces
@@ -62,6 +63,12 @@ var (
 	httpClient *http.Client
 	//cache to avoid repeated calls to monasca
 	alarmDefinitionCache = map[string]models.AlarmDefinitionElement{}
+
+	// prometheus metrics
+	definitionErrors = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "alarm_definition_errors",
+			Help: "Number of errors encountered while creating and updating alarm definitions"})
 )
 
 type kubeResponse struct {
@@ -306,7 +313,21 @@ func applyError(adr Resource, alarmErr error) error {
 	}
 
 	log.Printf("Applied error on alarm definition %s", adr.Spec.Name)
+	definitionErrors.Inc()
 
+	return nil
+}
+
+func clearError(adr Resource) error {
+	specPatch := map[string]string{"error": ""}
+
+	err := patchResource(adr, specPatch)
+	if err != nil {
+		log.Print(err)
+		return err
+	}
+
+	log.Printf("Cleared error on alarm definition %s", adr.Spec.Name)
 	return nil
 }
 
@@ -439,18 +460,24 @@ func pollDefinitions() {
 				if err != nil {
 					log.Print(err)
 					applyError(item, err)
+				} else if item.Spec.Error != "" {
+					clearError(item)
 				}
 				continue
 			}
 
 			for id, cached := range alarmDefinitionCache {
 				// if exists, check if needs update
-				if discovered.ID == id && !equal(discovered, cached) {
-					//update if possible
-					err := updateAlarmDefinition(id, item)
-					if err != nil {
-						log.Print(err)
-						applyError(item, err)
+				if discovered.ID == id {
+					if !equal(discovered, cached) {
+						//update if possible
+						err := updateAlarmDefinition(id, item)
+						if err != nil {
+							log.Print(err)
+							applyError(item, err)
+						} else if item.Spec.Error != "" {
+							clearError(item)
+						}
 					}
 					continue discoveredLoop
 				}
