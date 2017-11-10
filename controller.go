@@ -266,7 +266,10 @@ func updateAlarmDefinition(id string, r Resource) error {
 func removeAlarmDefinition(id string, definition models.AlarmDefinitionElement) error {
 	err := monascaclient.DeleteAlarmDefinition(id)
 	if err != nil {
-		return err
+		// if 404 is returned, assume definition is already gone
+		if !strings.HasPrefix(err.Error(), "Error: 404") {
+			return err
+		}
 	}
 	delete(alarmDefinitionCache, id)
 	log.Printf("Removed definition %v", definition)
@@ -437,6 +440,12 @@ func pollDefinitions() {
 			if item.Spec.ID == "" {
 				err := addAlarmDefinition(item)
 				if err != nil {
+					// If 409 is returned, we probably had a desync between cache
+					// and monasca. This can happen if monasca returned an error, but
+					// still created the definition.
+					if strings.HasPrefix(err.Error(), "Error: 409") {
+						updateCache()
+					}
 					log.Print(err)
 					applyError(item, err)
 				}
