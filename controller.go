@@ -58,11 +58,14 @@ var (
 	kubePort         = flag.String("port", getEnvDefault("KUBERNETES_SERVICE_PORT_HTTPS", "443"), "The port of the Kubernetes API server")
 	monServer        = flag.String("monasca", "http://monasca-api:8070/v2.0", "The URI of the monasca api")
 	namespace        = flag.String("namespace", getEnvDefault("NAMESPACE", "default"), "The namespace to use.")
+	defaultNotification = flag.String("default-notification", getEnvDefault("DEFAULT_NOTIFICATION", ""), "A default notification method to apply to new definitions")
 
 	token      string
 	httpClient *http.Client
 	//cache to avoid repeated calls to monasca
 	alarmDefinitionCache = map[string]models.AlarmDefinitionElement{}
+
+        defaultNotificationID string
 
 	// prometheus metrics
 	definitionErrors = prometheus.NewCounter(
@@ -181,7 +184,7 @@ outer:
 	return true
 }
 
-func set_keystone_token() error {
+func setKeystoneToken() error {
 	opts, err := openstack.AuthOptionsFromEnv()
   if err != nil {
   	log.Print(err)
@@ -246,6 +249,12 @@ func addAlarmDefinition(r Resource) error {
 	if !strings.HasSuffix(r.Spec.Name, alarmDefinitionControllerSuffix) {
 		r.Spec.Name = r.Spec.Name + alarmDefinitionControllerSuffix
 	}
+	if *defaultNotification != "" && len(r.Spec.AlarmActions) <= 0 {
+		if defaultNotificationID == "" {
+			return errors.New("Unable to apply default notification method: no ID found")
+		}
+		r.Spec.AlarmActions = []string{defaultNotificationID}
+	}
 	definitionRequest := convertToADRequest(r.Spec.AlarmDefinitionElement)
 	result, err := monascaclient.CreateAlarmDefinition(definitionRequest)
 	if err != nil {
@@ -273,7 +282,10 @@ func updateAlarmDefinition(id string, r Resource) error {
 func removeAlarmDefinition(id string, definition models.AlarmDefinitionElement) error {
 	err := monascaclient.DeleteAlarmDefinition(id)
 	if err != nil {
-		return err
+		// if 404 is returned, assume definition is already gone
+		if !strings.HasPrefix(err.Error(), "Error: 404") {
+			return err
+		}
 	}
 	delete(alarmDefinitionCache, id)
 	log.Printf("Removed definition %v", definition)
@@ -381,9 +393,41 @@ func pollDefinitions() {
 	url := fmt.Sprintf(alarmDefinitionsEndpoint, *kubeServer, *kubePort, *namespace)
 
 	monascaclient.SetBaseURL(*monServer)
-	set_keystone_token()
+	setKeystoneToken()
 	updateCache()
 	log.Printf("Found existing alarms %v", alarmDefinitionCache)
+
+	if *defaultNotification != "" {
+		go func() {
+			log.Printf("Searching for default notification method named %s", defaultNotification)
+
+			failureCount := 0
+			pollLoop:
+			for true {
+				notifications, err := monascaclient.GetNotificationMethods(nil)
+				if err != nil {
+					log.Printf("Error fetching notification methods: %s", err.Error())
+					failureCount++
+					if failureCount >= 3 {
+						log.Fatal("Could not retrieve notifications after three tries, quitting.")
+					}
+				} else {
+					for _, notif := range notifications.Elements {
+						if notif.Name == *defaultNotification {
+							log.Printf("Found notification with ID %s", notif.ID)
+							defaultNotificationID = notif.ID
+							break pollLoop
+						}
+					}
+					log.Printf("Could not find a notification named %s in the list", defaultNotification)
+					failureCount = 0
+				}
+				time.Sleep(time.Duration(*pollInterval) * time.Second)
+			}
+		}()
+	} else {
+		log.Print("No default notification specified, skipping lookup")
+	}
 
 	first := true
 
@@ -398,7 +442,7 @@ func pollDefinitions() {
 		}
 		first = false
 
-		err := set_keystone_token()
+		err := setKeystoneToken()
 		if err != nil {
 			log.Printf("Failed to retrieve new keystone token: %s", err.Error())
 			continue
@@ -458,6 +502,12 @@ func pollDefinitions() {
 			if item.Spec.ID == "" {
 				err := addAlarmDefinition(item)
 				if err != nil {
+					// If 409 is returned, we probably had a desync between cache
+					// and monasca. This can happen if monasca returned an error, but
+					// still created the definition.
+					if strings.HasPrefix(err.Error(), "Error: 409") {
+						updateCache()
+					}
 					log.Print(err)
 					applyError(item, err)
 				} else if item.Spec.Error != "" {
