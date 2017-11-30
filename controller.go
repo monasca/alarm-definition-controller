@@ -44,7 +44,7 @@ import (
 // TODO: check into publishing events instead of patching the original resource
 const (
 	// A path to the endpoint for the AlarmDefinition custom resources.
-	alarmDefinitionsEndpoint = "https://%s:%s/apis/monasca.io/v1/namespaces/%s/alarmdefinitions"
+	alarmDefinitionsEndpoint = "https://%s:%s/apis/monasca.io/%s/namespaces/%s/alarmdefinitions"
 )
 
 const alarmDefinitionControllerSuffix = " - adc"
@@ -57,6 +57,7 @@ var (
 	kubePort         = flag.String("port", getEnvDefault("KUBERNETES_SERVICE_PORT_HTTPS", "443"), "The port of the Kubernetes API server")
 	monServer        = flag.String("monasca", "http://monasca-api:8070/v2.0", "The URI of the monasca api")
 	namespace        = flag.String("namespace", getEnvDefault("NAMESPACE", "default"), "The namespace to use.")
+	version          = flag.String("version", getEnvDefault("VERSION", "v1"), "Version of alarm definition resource")
 	defaultNotification = flag.String("default-notification", getEnvDefault("DEFAULT_NOTIFICATION", ""), "A default notification method to apply to new definitions")
 
 	token      string
@@ -369,7 +370,7 @@ func pollDefinitions() {
 		Transport: transport,
 	}
 
-	url := fmt.Sprintf(alarmDefinitionsEndpoint, *kubeServer, *kubePort, *namespace)
+	url := fmt.Sprintf(alarmDefinitionsEndpoint, *kubeServer, *kubePort, *version, *namespace)
 
 	monascaclient.SetBaseURL(*monServer)
 	setKeystoneToken()
