@@ -30,8 +30,6 @@ The controller will append ``` - adc``` to the names of all alarm definitions it
 it has created and not interfere with existing definitions. It will maintain in internal cache of definitions while operating,
 but requires the names to be correct on restart.
 
-Known Issue: Errors are not cleared from the resource after successful requests.
-
 ## Examples
 #### Created Valid Resource
 ```
