@@ -35,9 +35,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gophercloud/gophercloud/openstack"
 	"github.com/monasca/golang-monascaclient/monascaclient"
 	"github.com/monasca/golang-monascaclient/monascaclient/models"
-	"github.com/gophercloud/gophercloud/openstack"
 )
 
 // TODO: support for multiple namespaces
@@ -53,11 +53,11 @@ var (
 	pollInterval = flag.Int("poll-interval", 15, "The polling interval in seconds.")
 	// The controller connects to the Kubernetes API via localhost. This is either
 	// a locally running kubectl proxy or kubectl proxy running in a sidecar container.
-	kubeServer       = flag.String("server", getEnvDefault("KUBERNETES_SERVICE_HOST", "127.0.0.1"), "The address of the Kubernetes API server.")
-	kubePort         = flag.String("port", getEnvDefault("KUBERNETES_SERVICE_PORT_HTTPS", "443"), "The port of the Kubernetes API server")
-	monServer        = flag.String("monasca", "http://monasca-api:8070/v2.0", "The URI of the monasca api")
-	namespace        = flag.String("namespace", getEnvDefault("NAMESPACE", "default"), "The namespace to use.")
-	version          = flag.String("version", getEnvDefault("VERSION", "v1"), "Version of alarm definition resource")
+	kubeServer          = flag.String("server", getEnvDefault("KUBERNETES_SERVICE_HOST", "127.0.0.1"), "The address of the Kubernetes API server.")
+	kubePort            = flag.String("port", getEnvDefault("KUBERNETES_SERVICE_PORT_HTTPS", "443"), "The port of the Kubernetes API server")
+	monServer           = flag.String("monasca", "http://monasca-api:8070/v2.0", "The URI of the monasca api")
+	namespace           = flag.String("namespace", getEnvDefault("NAMESPACE", "default"), "The namespace to use.")
+	version             = flag.String("version", getEnvDefault("VERSION", "v1"), "Version of alarm definition resource")
 	defaultNotification = flag.String("default-notification", getEnvDefault("DEFAULT_NOTIFICATION", ""), "A default notification method to apply to new definitions")
 
 	token      string
@@ -180,10 +180,10 @@ outer:
 
 func setKeystoneToken() error {
 	opts, err := openstack.AuthOptionsFromEnv()
-  if err != nil {
-  	log.Print(err)
-  	return err
-  }
+	if err != nil {
+		log.Print(err)
+		return err
+	}
 
 	openstackProvider, err := openstack.AuthenticatedClient(opts)
 	if err != nil {
@@ -374,7 +374,10 @@ func pollDefinitions() {
 
 	monascaclient.SetBaseURL(*monServer)
 	setKeystoneToken()
-	updateCache()
+	err = updateCache()
+	if err != nil {
+		log.Fatalf("Unable to update cache from monasca: %v", err)
+	}
 	log.Printf("Found existing alarms %v", alarmDefinitionCache)
 
 	if *defaultNotification != "" {
@@ -382,7 +385,7 @@ func pollDefinitions() {
 			log.Printf("Searching for default notification method named %s", defaultNotification)
 
 			failureCount := 0
-			pollLoop:
+		pollLoop:
 			for true {
 				notifications, err := monascaclient.GetNotificationMethods(nil)
 				if err != nil {
