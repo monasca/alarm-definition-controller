@@ -373,7 +373,10 @@ func pollDefinitions() {
 	url := fmt.Sprintf(alarmDefinitionsEndpoint, *kubeServer, *kubePort, *version, *namespace)
 
 	monascaclient.SetBaseURL(*monServer)
-	setKeystoneToken()
+	err = setKeystoneToken()
+	if err != nil {
+		log.Fatalf("Unable to retrieve keystone token: %v", err)
+	}
 	err = updateCache()
 	if err != nil {
 		log.Fatalf("Unable to update cache from monasca: %v", err)
