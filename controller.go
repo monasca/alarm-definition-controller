@@ -35,9 +35,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gophercloud/gophercloud/openstack"
 	"github.com/monasca/golang-monascaclient/monascaclient"
 	"github.com/monasca/golang-monascaclient/monascaclient/models"
-	"github.com/gophercloud/gophercloud/openstack"
+	"sync"
 )
 
 // TODO: support for multiple namespaces
@@ -53,11 +54,11 @@ var (
 	pollInterval = flag.Int("poll-interval", 15, "The polling interval in seconds.")
 	// The controller connects to the Kubernetes API via localhost. This is either
 	// a locally running kubectl proxy or kubectl proxy running in a sidecar container.
-	kubeServer       = flag.String("server", getEnvDefault("KUBERNETES_SERVICE_HOST", "127.0.0.1"), "The address of the Kubernetes API server.")
-	kubePort         = flag.String("port", getEnvDefault("KUBERNETES_SERVICE_PORT_HTTPS", "443"), "The port of the Kubernetes API server")
-	monServer        = flag.String("monasca", "http://monasca-api:8070/v2.0", "The URI of the monasca api")
-	namespace        = flag.String("namespace", getEnvDefault("NAMESPACE", "default"), "The namespace to use.")
-	version          = flag.String("version", getEnvDefault("VERSION", "v1"), "Version of alarm definition resource")
+	kubeServer          = flag.String("server", getEnvDefault("KUBERNETES_SERVICE_HOST", "127.0.0.1"), "The address of the Kubernetes API server.")
+	kubePort            = flag.String("port", getEnvDefault("KUBERNETES_SERVICE_PORT_HTTPS", "443"), "The port of the Kubernetes API server")
+	monServer           = flag.String("monasca", "http://monasca-api:8070/v2.0", "The URI of the monasca api")
+	namespace           = flag.String("namespace", getEnvDefault("NAMESPACE", "default"), "The namespace to use.")
+	version             = flag.String("version", getEnvDefault("VERSION", "v1"), "Version of alarm definition resource")
 	defaultNotification = flag.String("default-notification", getEnvDefault("DEFAULT_NOTIFICATION", ""), "A default notification method to apply to new definitions")
 
 	token      string
@@ -66,6 +67,7 @@ var (
 	alarmDefinitionCache = map[string]models.AlarmDefinitionElement{}
 
 	defaultNotificationID string
+	notificationIDLock    sync.Mutex
 )
 
 type kubeResponse struct {
@@ -180,10 +182,10 @@ outer:
 
 func setKeystoneToken() error {
 	opts, err := openstack.AuthOptionsFromEnv()
-  if err != nil {
-  	log.Print(err)
-  	return err
-  }
+	if err != nil {
+		log.Print(err)
+		return err
+	}
 
 	openstackProvider, err := openstack.AuthenticatedClient(opts)
 	if err != nil {
@@ -244,6 +246,8 @@ func addAlarmDefinition(r Resource) error {
 		r.Spec.Name = r.Spec.Name + alarmDefinitionControllerSuffix
 	}
 	if *defaultNotification != "" && len(r.Spec.AlarmActions) <= 0 {
+		notificationIDLock.Lock()
+		defer notificationIDLock.Unlock()
 		if defaultNotificationID == "" {
 			return errors.New("Unable to apply default notification method: no ID found")
 		}
@@ -266,7 +270,27 @@ func updateAlarmDefinition(id string, r Resource) error {
 	definitionRequest := convertToADRequest(r.Spec.AlarmDefinitionElement)
 	result, err := monascaclient.PatchAlarmDefinition(id, definitionRequest)
 	if err != nil {
-		return err
+		if !strings.HasPrefix(err.Error(), "Error: 422") {
+			return err
+		}
+		// Some updates are not allowed, so try deleting and recreating instead
+		// NOTE: this will remove the history from the alarm definition
+		log.Printf("Failed to update alarm %s, attempting delete and recreate", id)
+		deleteErr := removeAlarmDefinition(id, r)
+		if deleteErr != nil {
+			log.Printf("Error deleting definition: %s", deleteErr.Error())
+			// return the original error
+			return err
+		}
+		// Remove the ID from the k8s resource to reduce
+		// confusion if the create fails
+		emptyID := make(map[string]map[string]string)
+		emptyID["alarmDefinitionSpec"] = make(map[string]string)
+		emptyID["alarmDefinitionSpec"]["id"] = ""
+		patchResource(r, emptyID)
+
+		// Attempt the create and return any errors encountered
+		return addAlarmDefinition(r)
 	}
 	alarmDefinitionCache[id] = *result
 	log.Printf("Updated definition %v", r.Spec)
@@ -287,10 +311,6 @@ func removeAlarmDefinition(id string, definition models.AlarmDefinitionElement) 
 }
 
 func applyDefinition(adr Resource, definition models.AlarmDefinitionElement) error {
-	if adr.Spec.ID != "" {
-		return errors.New("Cannot replace existing ID")
-	}
-
 	specPatch := map[string]models.AlarmDefinitionElement{}
 	specPatch["alarmDefinitionSpec"] = definition
 
@@ -300,7 +320,7 @@ func applyDefinition(adr Resource, definition models.AlarmDefinitionElement) err
 		return err
 	}
 
-	log.Printf("Applied ID to alarm definition %s", adr.Spec.ID)
+	log.Printf("Applied alarm definition to resource: %v", adr.Spec)
 
 	return nil
 }
@@ -382,7 +402,7 @@ func pollDefinitions() {
 			log.Printf("Searching for default notification method named %s", defaultNotification)
 
 			failureCount := 0
-			pollLoop:
+		pollLoop:
 			for true {
 				notifications, err := monascaclient.GetNotificationMethods(nil)
 				if err != nil {
@@ -395,7 +415,9 @@ func pollDefinitions() {
 					for _, notif := range notifications.Elements {
 						if notif.Name == *defaultNotification {
 							log.Printf("Found notification with ID %s", notif.ID)
+							notificationIDLock.Lock()
 							defaultNotificationID = notif.ID
+							notificationIDLock.Unlock()
 							break pollLoop
 						}
 					}
