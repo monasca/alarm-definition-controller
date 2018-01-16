@@ -274,7 +274,8 @@ func updateAlarmDefinition(id string, r Resource) error {
 			return err
 		}
 		// Some updates are not allowed, so try deleting and recreating instead
-		// NOTE: this will remove the history from the alarm definition
+		// NOTE: this will remove the alarms under this definition and thus remove
+		// any alarm history as well.
 		log.Printf("Failed to update alarm %s, attempting delete and recreate", id)
 		deleteErr := removeAlarmDefinition(id, r.Spec.AlarmDefinitionElement)
 		if deleteErr != nil {
@@ -287,7 +288,8 @@ func updateAlarmDefinition(id string, r Resource) error {
 		emptyID := make(map[string]map[string]string)
 		emptyID["alarmDefinitionSpec"] = make(map[string]string)
 		emptyID["alarmDefinitionSpec"]["id"] = ""
-		patchResource(r, emptyID)
+		patchErr := patchResource(r, emptyID)
+		log.Printf("Failed to remove definition ID: %s", patchErr.Error())
 
 		// Attempt the create and return any errors encountered
 		return addAlarmDefinition(r)
