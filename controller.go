@@ -33,12 +33,12 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gophercloud/gophercloud/openstack"
 	"github.com/monasca/golang-monascaclient/monascaclient"
 	"github.com/monasca/golang-monascaclient/monascaclient/models"
-	"sync"
 )
 
 // TODO: support for multiple namespaces
@@ -393,8 +393,14 @@ func pollDefinitions() {
 	url := fmt.Sprintf(alarmDefinitionsEndpoint, *kubeServer, *kubePort, *version, *namespace)
 
 	monascaclient.SetBaseURL(*monServer)
-	setKeystoneToken()
-	updateCache()
+	err = setKeystoneToken()
+	if err != nil {
+		log.Fatalf("Unable to retrieve keystone token: %v", err)
+	}
+	err = updateCache()
+	if err != nil {
+		log.Fatalf("Unable to update cache from monasca: %v", err)
+	}
 	log.Printf("Found existing alarms %v", alarmDefinitionCache)
 
 	if *defaultNotification != "" {
