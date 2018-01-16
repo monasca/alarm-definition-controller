@@ -296,7 +296,9 @@ func updateAlarmDefinition(id string, r Resource) error {
 		emptyID["alarmDefinitionSpec"] = make(map[string]string)
 		emptyID["alarmDefinitionSpec"]["id"] = ""
 		patchErr := patchResource(r, emptyID)
-		log.Printf("Failed to remove definition ID: %s", patchErr.Error())
+		if patchErr != nil {
+			log.Printf("Failed to remove definition ID: %s", patchErr.Error())
+		}
 
 		// Attempt the create and return any errors encountered
 		return addAlarmDefinition(r)
