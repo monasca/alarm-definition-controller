@@ -1,5 +1,5 @@
 // Copyright 2016 Google Inc.
-// (C) Copyright 2017 Hewlett Packard Enterprise Development LP
+// (C) Copyright 2017-2018 Hewlett Packard Enterprise Development LP
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -33,6 +33,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gophercloud/gophercloud/openstack"
@@ -66,6 +67,7 @@ var (
 	alarmDefinitionCache = map[string]models.AlarmDefinitionElement{}
 
 	defaultNotificationID string
+	notificationIDLock    sync.Mutex
 )
 
 type kubeResponse struct {
@@ -244,6 +246,8 @@ func addAlarmDefinition(r Resource) error {
 		r.Spec.Name = r.Spec.Name + alarmDefinitionControllerSuffix
 	}
 	if *defaultNotification != "" && len(r.Spec.AlarmActions) <= 0 {
+		notificationIDLock.Lock()
+		defer notificationIDLock.Unlock()
 		if defaultNotificationID == "" {
 			return errors.New("Unable to apply default notification method: no ID found")
 		}
@@ -266,7 +270,29 @@ func updateAlarmDefinition(id string, r Resource) error {
 	definitionRequest := convertToADRequest(r.Spec.AlarmDefinitionElement)
 	result, err := monascaclient.PatchAlarmDefinition(id, definitionRequest)
 	if err != nil {
-		return err
+		if !strings.HasPrefix(err.Error(), "Error: 422") {
+			return err
+		}
+		// Some updates are not allowed, so try deleting and recreating instead
+		// NOTE: this will remove the alarms under this definition and thus remove
+		// any alarm history as well.
+		log.Printf("Failed to update alarm %s, attempting delete and recreate", id)
+		deleteErr := removeAlarmDefinition(id, r.Spec.AlarmDefinitionElement)
+		if deleteErr != nil {
+			log.Printf("Error deleting definition: %s", deleteErr.Error())
+			// return the original error
+			return err
+		}
+		// Remove the ID from the k8s resource to reduce
+		// confusion if the create fails
+		emptyID := make(map[string]map[string]string)
+		emptyID["alarmDefinitionSpec"] = make(map[string]string)
+		emptyID["alarmDefinitionSpec"]["id"] = ""
+		patchErr := patchResource(r, emptyID)
+		log.Printf("Failed to remove definition ID: %s", patchErr.Error())
+
+		// Attempt the create and return any errors encountered
+		return addAlarmDefinition(r)
 	}
 	alarmDefinitionCache[id] = *result
 	log.Printf("Updated definition %v", r.Spec)
@@ -287,10 +313,6 @@ func removeAlarmDefinition(id string, definition models.AlarmDefinitionElement) 
 }
 
 func applyDefinition(adr Resource, definition models.AlarmDefinitionElement) error {
-	if adr.Spec.ID != "" {
-		return errors.New("Cannot replace existing ID")
-	}
-
 	specPatch := map[string]models.AlarmDefinitionElement{}
 	specPatch["alarmDefinitionSpec"] = definition
 
@@ -300,7 +322,7 @@ func applyDefinition(adr Resource, definition models.AlarmDefinitionElement) err
 		return err
 	}
 
-	log.Printf("Applied ID to alarm definition %s", adr.Spec.ID)
+	log.Printf("Applied alarm definition to resource: %v", adr.Spec)
 
 	return nil
 }
@@ -401,7 +423,9 @@ func pollDefinitions() {
 					for _, notif := range notifications.Elements {
 						if notif.Name == *defaultNotification {
 							log.Printf("Found notification with ID %s", notif.ID)
+							notificationIDLock.Lock()
 							defaultNotificationID = notif.ID
+							notificationIDLock.Unlock()
 							break pollLoop
 						}
 					}
