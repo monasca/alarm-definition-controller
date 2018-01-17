@@ -7,3 +7,6 @@ import:
 - package: github.com/gophercloud/gophercloud
   subpackages:
   - openstack
+- package: github.com/prometheus/client_golang
+  subpackages:
+  - prometheus

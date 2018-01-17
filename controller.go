@@ -39,6 +39,7 @@ import (
 	"github.com/gophercloud/gophercloud/openstack"
 	"github.com/monasca/golang-monascaclient/monascaclient"
 	"github.com/monasca/golang-monascaclient/monascaclient/models"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // TODO: support for multiple namespaces
@@ -65,6 +66,12 @@ var (
 	httpClient *http.Client
 	//cache to avoid repeated calls to monasca
 	alarmDefinitionCache = map[string]models.AlarmDefinitionElement{}
+
+	// prometheus metrics
+	definitionErrors = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "alarm_definition_errors",
+			Help: "Number of errors encountered while creating and updating alarm definitions"})
 
 	defaultNotificationID string
 	notificationIDLock    sync.Mutex
@@ -217,7 +224,9 @@ func updateCache() error {
 }
 
 func convertToADRequest(definition models.AlarmDefinitionElement) *models.AlarmDefinitionRequestBody {
-
+	if !strings.HasSuffix(definition.Name, alarmDefinitionControllerSuffix) {
+		definition.Name = definition.Name + alarmDefinitionControllerSuffix
+	}
 	request := &models.AlarmDefinitionRequestBody{
 		Name:        &definition.Name,
 		Description: &definition.Description,
@@ -242,9 +251,6 @@ func convertToADRequest(definition models.AlarmDefinitionElement) *models.AlarmD
 }
 
 func addAlarmDefinition(r Resource) error {
-	if !strings.HasSuffix(r.Spec.Name, alarmDefinitionControllerSuffix) {
-		r.Spec.Name = r.Spec.Name + alarmDefinitionControllerSuffix
-	}
 	if *defaultNotification != "" && len(r.Spec.AlarmActions) <= 0 {
 		notificationIDLock.Lock()
 		defer notificationIDLock.Unlock()
@@ -289,7 +295,9 @@ func updateAlarmDefinition(id string, r Resource) error {
 		emptyID["alarmDefinitionSpec"] = make(map[string]string)
 		emptyID["alarmDefinitionSpec"]["id"] = ""
 		patchErr := patchResource(r, emptyID)
-		log.Printf("Failed to remove definition ID: %s", patchErr.Error())
+		if patchErr != nil {
+			log.Printf("Failed to remove definition ID: %s", patchErr.Error())
+		}
 
 		// Attempt the create and return any errors encountered
 		return addAlarmDefinition(r)
@@ -341,7 +349,21 @@ func applyError(adr Resource, alarmErr error) error {
 	}
 
 	log.Printf("Applied error on alarm definition %s", adr.Spec.Name)
+	definitionErrors.Inc()
 
+	return nil
+}
+
+func clearError(adr Resource) error {
+	specPatch := map[string]string{"error": ""}
+
+	err := patchResource(adr, specPatch)
+	if err != nil {
+		log.Print(err)
+		return err
+	}
+
+	log.Printf("Cleared error on alarm definition %s", adr.Spec.Name)
 	return nil
 }
 
@@ -520,18 +542,24 @@ func pollDefinitions() {
 					}
 					log.Print(err)
 					applyError(item, err)
+					continue
 				}
+				clearError(item)
 				continue
 			}
 
 			for id, cached := range alarmDefinitionCache {
 				// if exists, check if needs update
-				if discovered.ID == id && !equal(discovered, cached) {
-					//update if possible
-					err := updateAlarmDefinition(id, item)
-					if err != nil {
-						log.Print(err)
-						applyError(item, err)
+				if discovered.ID == id {
+					if !equal(discovered, cached) {
+						//update if possible
+						err := updateAlarmDefinition(id, item)
+						if err != nil {
+							log.Print(err)
+							applyError(item, err)
+							continue discoveredLoop
+						}
+						clearError(item)
 					}
 					continue discoveredLoop
 				}

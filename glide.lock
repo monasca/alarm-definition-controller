@@ -1,36 +1,54 @@
-hash: 576760ebb9c1b2be70655ca6594a320e3047c39fc4c6ed81791061e86d35488a
-updated: 2017-10-18T14:37:30.579699953-06:00
+hash: 91984693238173d2d9b6a0c89571b23c641a577d48f2b1556a43576573fc968d
+updated: 2018-01-16T16:30:22.075407278-07:00
 imports:
 - name: ""
-  version: c3adf7f4ac1a924c5d32fe81b904d86a90658fc4
+  version: bd0d6bd06da0f02385a83f5c74e67e072bc730c2
   repo: https://github.com/monasca/golang-monascaclient
   subpackages:
   - monascaclient
   - monascaclient/models
+- name: github.com/beorn7/perks
+  version: 4c0e84591b9aa9e6dcfdf3e020114cd81f89d5f9
+  subpackages:
+  - quantile
+- name: github.com/golang/protobuf
+  version: 1643683e1b54a9e88ad26d98f81400c8c9d9f4f9
+  subpackages:
+  - proto
 - name: github.com/gophercloud/gophercloud
-  version: 443743e88335413103dcf1997e46d401b264fbcd
-  subpackages:
-  - openstack
-- name: github.com/mitchellh/mapstructure
-  version: d0303fe809921458f417bcf828397a65db30a7e4
-- name: github.com/monasca/golang-monascaclient
-  version: c3adf7f4ac1a924c5d32fe81b904d86a90658fc4
-  subpackages:
-  - monascaclient
-  - monascaclient/models
-- name: github.com/racker/perigee
-  version: 44a7879d89b7040bcdb51164a83292ef5bf9deec
-- name: github.com/rackspace/gophercloud
-  version: da56de6a59e53fdd61be1b5d9b87df34c47ac420
+  version: b4c2377fa77951a0e08163f52dc9b3e206355194
   subpackages:
   - openstack
   - openstack/identity/v2/tenants
   - openstack/identity/v2/tokens
-  - openstack/identity/v3/endpoints
-  - openstack/identity/v3/services
   - openstack/identity/v3/tokens
   - openstack/utils
   - pagination
-  - testhelper
-  - testhelper/client
+- name: github.com/matttproud/golang_protobuf_extensions
+  version: c12348ce28de40eed0136aa2b644d0ee0650e56c
+  subpackages:
+  - pbutil
+- name: github.com/monasca/golang-monascaclient
+  version: bd0d6bd06da0f02385a83f5c74e67e072bc730c2
+  subpackages:
+  - monascaclient
+  - monascaclient/models
+- name: github.com/prometheus/client_golang
+  version: f02bfc3484a6b03d1fc00d72d86add103ef9567b
+  subpackages:
+  - prometheus
+- name: github.com/prometheus/client_model
+  version: 99fa1f4be8e564e8a6b613da7fa6f46c9edafc6c
+  subpackages:
+  - go
+- name: github.com/prometheus/common
+  version: 89604d197083d4781071d3c65855d24ecfb0a563
+  subpackages:
+  - expfmt
+  - internal/bitbucket.org/ww/goautoneg
+  - model
+- name: github.com/prometheus/procfs
+  version: b15cd069a83443be3154b719d0cc9fe8117f09fb
+  subpackages:
+  - xfs
 testImports: []
