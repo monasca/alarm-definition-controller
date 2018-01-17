@@ -224,7 +224,9 @@ func updateCache() error {
 }
 
 func convertToADRequest(definition models.AlarmDefinitionElement) *models.AlarmDefinitionRequestBody {
-
+	if !strings.HasSuffix(definition.Name, alarmDefinitionControllerSuffix) {
+		definition.Name = definition.Name + alarmDefinitionControllerSuffix
+	}
 	request := &models.AlarmDefinitionRequestBody{
 		Name:        &definition.Name,
 		Description: &definition.Description,
@@ -249,9 +251,6 @@ func convertToADRequest(definition models.AlarmDefinitionElement) *models.AlarmD
 }
 
 func addAlarmDefinition(r Resource) error {
-	if !strings.HasSuffix(r.Spec.Name, alarmDefinitionControllerSuffix) {
-		r.Spec.Name = r.Spec.Name + alarmDefinitionControllerSuffix
-	}
 	if *defaultNotification != "" && len(r.Spec.AlarmActions) <= 0 {
 		notificationIDLock.Lock()
 		defer notificationIDLock.Unlock()
