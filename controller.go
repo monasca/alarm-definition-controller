@@ -542,9 +542,8 @@ func pollDefinitions() {
 					}
 					log.Print(err)
 					applyError(item, err)
-				} else if item.Spec.Error != "" {
-					clearError(item)
 				}
+				clearError(item)
 				continue
 			}
 
@@ -557,9 +556,8 @@ func pollDefinitions() {
 						if err != nil {
 							log.Print(err)
 							applyError(item, err)
-						} else if item.Spec.Error != "" {
-							clearError(item)
 						}
+						clearError(item)
 					}
 					continue discoveredLoop
 				}
