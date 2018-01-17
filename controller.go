@@ -542,6 +542,7 @@ func pollDefinitions() {
 					}
 					log.Print(err)
 					applyError(item, err)
+					continue
 				}
 				clearError(item)
 				continue
@@ -556,6 +557,7 @@ func pollDefinitions() {
 						if err != nil {
 							log.Print(err)
 							applyError(item, err)
+							continue discoveredLoop
 						}
 						clearError(item)
 					}
