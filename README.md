@@ -134,3 +134,11 @@ metadata: {}
 resourceVersion: ""
 selfLink: ""
 ```
+
+## Building Type Changes
+If any changes are made to the alarm definition type under pkg, follow these steps
+
+Setup:
+1) Ensure https://github.com/kubernetes/code-generator is present in the vendor directory. It may need to be manually added.
+ This is required to run the code generation scripts.
+2) Run ```./hack/update-codegen.sh``` from the main repo directory.

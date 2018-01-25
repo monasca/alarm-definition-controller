@@ -10,3 +10,5 @@ import:
 - package: github.com/prometheus/client_golang
   subpackages:
   - prometheus
+- package: k8s.io/client-go
+  version: 6.0.0
