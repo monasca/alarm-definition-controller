@@ -89,7 +89,7 @@ func main() {
 	go func() {
 		// Start prometheus endpoint
 		http.Handle("/metrics", promhttp.Handler())
-		log.Fatal(http.ListenAndServe(prometheusEndpoint, nil))
+		log.Fatal(http.ListenAndServe(*prometheusEndpoint, nil))
 	}()
 
 	pollDefinitions(definitionClient, kubeClient)
