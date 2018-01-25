@@ -26,6 +26,10 @@ import (
 	"time"
 
 	"github.com/golang/glog"
+	"github.com/gophercloud/gophercloud/openstack"
+	"github.com/monasca/golang-monascaclient/monascaclient"
+	"github.com/monasca/golang-monascaclient/monascaclient/models"
+	"github.com/prometheus/client_golang/prometheus"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -33,12 +37,6 @@ import (
 	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/record"
-	// Uncomment the following line to load the gcp plugin (only required to authenticate against GKE clusters).
-	// _ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
-	"github.com/gophercloud/gophercloud/openstack"
-	"github.com/monasca/golang-monascaclient/monascaclient"
-	"github.com/monasca/golang-monascaclient/monascaclient/models"
-	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/monasca/alarm-definition-controller/pkg/apis/alarmdefinition/v1"
 	clientset "github.com/monasca/alarm-definition-controller/pkg/client/clientset/versioned"
@@ -148,7 +146,7 @@ func pollDefinitions(defClient clientset.Interface, kubeClient kubernetes.Interf
 	for {
 		// Sleep for the poll interval if not the first time around.
 		// Do this here so we sleep for the poll interval every time,
-		// even after errors occurred.
+		// even after errors occur.
 		if !first {
 			time.Sleep(time.Duration(*pollInterval) * time.Second)
 		}
@@ -161,7 +159,6 @@ func pollDefinitions(defClient clientset.Interface, kubeClient kubernetes.Interf
 		}
 
 		opts := metav1.ListOptions{}
-		log.Print("Fetching resource list")
 		l, err := defClient.Monasca().AlarmDefinitions(*namespace).List(opts)
 		if err != nil {
 			log.Printf("Error fetching resources: %s", err.Error())
@@ -169,7 +166,6 @@ func pollDefinitions(defClient clientset.Interface, kubeClient kubernetes.Interf
 		}
 
 		// loop to remove alarms
-		log.Print("Looking for alarms to remove")
 		for id, cached := range alarmDefinitionCache {
 			exists := false
 			for _, discovered := range l.Items {
@@ -180,7 +176,6 @@ func pollDefinitions(defClient clientset.Interface, kubeClient kubernetes.Interf
 			}
 			if !exists {
 				// remove definitions from monasca
-				log.Printf("Removing alarm definition %s", id)
 				err := removeAlarmDefinition(id)
 				if err != nil {
 					log.Printf("Error removing definition: %s", err.Error())
@@ -190,12 +185,11 @@ func pollDefinitions(defClient clientset.Interface, kubeClient kubernetes.Interf
 			}
 		}
 
-		log.Print("Looking for alarms to add/update")
+		// loop to add/update alarms
 	discoveredLoop:
-		for _, item := range l.Items { // loop to add/update alarms
+		for _, item := range l.Items {
 			// if not marked with ID, add new
 			if item.Spec.ID == "" {
-				log.Printf("Adding new alarm %s", item.Spec.Name)
 				err := addAlarmDefinition(*namespace, &item, defClient)
 				if err != nil {
 					// If 409 is returned, we probably had a desync between cache
@@ -208,7 +202,6 @@ func pollDefinitions(defClient clientset.Interface, kubeClient kubernetes.Interf
 						continue
 					}
 					log.Print(err)
-					//applyError(item, err)
 					recorder.Event(&item, corev1.EventTypeWarning, err.Error(), "")
 				}
 				continue
@@ -218,7 +211,6 @@ func pollDefinitions(defClient clientset.Interface, kubeClient kubernetes.Interf
 				// if exists, check if needs update
 				if item.Spec.ID == id && !equal(&item, cached) {
 					//update if possible
-					log.Printf("Updating alarm %s", item.Spec.Name)
 					err := updateAlarmDefinition(&item, defClient)
 					if err != nil {
 						log.Print(err)
@@ -288,7 +280,11 @@ func addAlarmDefinition(namespace string, r *v1.AlarmDefinition, sampleclientset
 	}
 	alarmDefinitionCache[result.ID] = *result
 	newDef := convertToADResource(r, result)
-	sampleclientset.Monasca().AlarmDefinitions(namespace).Update(newDef)
+	_, err = sampleclientset.Monasca().AlarmDefinitions(namespace).Update(newDef)
+	if err != nil {
+		log.Printf("Failed to update resource %s", newDef.Name)
+		return err
+	}
 
 	log.Printf("Added definition %v", r.Spec)
 	return nil
@@ -300,9 +296,13 @@ func updateAlarmDefinition(r *v1.AlarmDefinition, sampleclientset clientset.Inte
 	if err != nil {
 		return err
 	}
-	alarmDefinitionCache[result.ID] = *result
 	newDef := convertToADResource(r, result)
-	sampleclientset.Monasca().AlarmDefinitions(*namespace).Update(newDef)
+	_, err = sampleclientset.Monasca().AlarmDefinitions(*namespace).Update(newDef)
+	if err != nil {
+		log.Printf("Failed to update resource %s", newDef.Name)
+		return err
+	}
+	alarmDefinitionCache[result.ID] = *result
 	log.Printf("Updated definition %v", r.Spec)
 	return nil
 }
@@ -356,6 +356,7 @@ func convertToADResource(r *v1.AlarmDefinition, d *models.AlarmDefinitionElement
 		Name:                d.Name,
 		Description:         d.Description,
 		Expression:          d.Expression,
+		Deterministic:       d.Deterministic,
 		Severity:            d.Severity,
 		MatchBy:             d.MatchBy,
 		AlarmActions:        d.AlarmActions,
@@ -367,45 +368,36 @@ func convertToADResource(r *v1.AlarmDefinition, d *models.AlarmDefinitionElement
 
 func equal(r *v1.AlarmDefinition, existing models.AlarmDefinitionElement) bool {
 	if r.Spec.ID == "" {
-		log.Print("No ID")
 		return false
-	} else if r.Spec.ID != existing.ID {
-		log.Printf("ID: %s != %s", r.Spec.ID, existing.ID)
+	}
+	if r.Spec.ID != existing.ID {
 		return false
 	}
 	if r.Spec.Name != existing.Name {
-		log.Printf("Name: %s != %s", r.Spec.Name, existing.Name)
 		return false
 	}
 	if r.Spec.Description != existing.Description {
-		log.Printf("Description: %s != %s", r.Spec.Description, existing.Description)
 		return false
 	}
 	if r.Spec.Expression != existing.Expression {
-		log.Printf("Expression: %s != %s", r.Spec.Expression, existing.Expression)
 		return false
 	}
-	//if r.Spec.Deterministic != existing.Deterministic {
-	//	return false
-	//}
+	if r.Spec.Deterministic != existing.Deterministic {
+		return false
+	}
 	if !equalStringList(r.Spec.MatchBy, existing.MatchBy) {
-		log.Printf("Match By: %v != %v", r.Spec.MatchBy, existing.MatchBy)
 		return false
 	}
 	if r.Spec.Severity != existing.Severity {
-		log.Printf("Severity: %s != %s", r.Spec.Severity, existing.Severity)
 		return false
 	}
 	if !equalStringList(r.Spec.AlarmActions, existing.AlarmActions) {
-		log.Printf("Alarm Actions: %v != %v", r.Spec.AlarmActions, existing.AlarmActions)
 		return false
 	}
 	if !equalStringList(r.Spec.OkActions, existing.OkActions) {
-		log.Printf("OK Actions: %v != %v", r.Spec.OkActions, existing.OkActions)
 		return false
 	}
 	if !equalStringList(r.Spec.UndeterminedActions, existing.UndeterminedActions) {
-		log.Printf("Undetermined Actions: %v != %v", r.Spec.UndeterminedActions, existing.UndeterminedActions)
 		return false
 	}
 	return true

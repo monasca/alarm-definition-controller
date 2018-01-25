@@ -37,6 +37,7 @@ type AlarmDefinitionSpec struct {
 	Name                string   `json:"name,omitempty"`
 	Expression          string   `json:"expression,omitempty"`
 	Description         string   `json:"description,omitempty"`
+	Deterministic       bool     `json:"deterministic,omitemoty"`
 	Severity            string   `json:"severity,omitempty"`
 	MatchBy             []string `json:"match_by,omitempty"`
 	AlarmActions        []string `json:"alarm_actions,omitempty"`
