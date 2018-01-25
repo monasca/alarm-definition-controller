@@ -53,7 +53,7 @@ var (
 	kubeconfig          = flag.String("kubeconfig", "", "Path to a kubeconfig. Only required if out-of-cluster.")
 	monascaUrl          = flag.String("monasca", getEnvDefault("MONASCA_API_URL", "http://monasca-api:8070/v2.0"), "The URI of the monasca api")
 	namespace           = flag.String("namespace", getEnvDefault("NAMESPACE", "default"), "The namespace to watch for definitions")
-	prometheusEndpoint  = flag.String("prometheus_endpoint", getEnvDefault("PROMETHEUS_ENDPOINT", "127.0.0.1"), "The endpoint to expose prometheus metrics")
+	prometheusEndpoint  = flag.String("prometheus_endpoint", getEnvDefault("PROMETHEUS_ENDPOINT", "127.0.0.1:8080"), "The endpoint to expose prometheus metrics")
 	defaultNotification = flag.String("default-notification", getEnvDefault("DEFAULT_NOTIFICATION", ""), "A default notification method to apply to new definitions")
 	pollInterval        = flag.Int("poll-interval", 15, "The interval in seconds to poll the resources")
 
